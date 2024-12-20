@@ -186,44 +186,42 @@ class Input:
 
     ######################################################################################
     @classmethod
-    def func(cls,dat):
+    def func(cls, dat):
         # Data Preparation (used by read_csv_massive)
-        # Iterating over groups in Pandas dataframe
-        data_augment = pd.DataFrame()
+        # Iterating over groups in Pandas DataFrame
+        data_augment = []  # Use a list to collect DataFrames
         dat_group = dat.groupby('CaseID')
 
         total_iter = len(dat_group.ngroup())
         pbar = tqdm(total=total_iter)
         for name, gr in dat_group:
-            # sorting by time
-            gr.sort_values(by=['CompleteTimestamp'])
-            # print (gr)
+            # Sorting by time
+            gr.sort_values(by=['CompleteTimestamp'], inplace=True)
 
-            # computing the duration time in seconds by differecning x[t+1]-x[t]
-            # duration_time = gr.loc[:, 'CompleteTimestamp'].diff() / np.timedelta64(1, 's')
+            # Computing the duration time in seconds by differencing x[t+1]-x[t]
             duration_time = gr.loc[:, 'CompleteTimestamp'].diff() / np.timedelta64(1, 'D')
-            # Filling Nan with 0
+
+            # Filling NaN with 0
             duration_time.iloc[0] = 0
-            # print ("duration time:\n", duration_time)
 
-            # computing the remaining time
+            # Computing the remaining time
             length = duration_time.shape[0]
-            remaining_time = [np.sum(duration_time[i + 1:length]) for i in range(duration_time.shape[0])]
-            # print("Time to finish:\n", remaining_time)
+            remaining_time = [np.sum(duration_time[i + 1:length]) for i in range(length)]
 
+            # Adding computed columns to the DataFrame
             gr['duration_time'] = duration_time
             gr['remaining_time'] = remaining_time
 
-            data_augment = data_augment.append(gr)
+            # Append the processed group to the list
+            data_augment.append(gr)
 
-            # print("gr after:\n", gr)
-
-            # break
             pbar.update(1)
         pbar.close()
 
+        # Concatenate all processed groups into a single DataFrame
+        data_augment = pd.concat(data_augment, ignore_index=True)
 
-        #print("Dataset with indicating remaining and duration times:\n", data_augment.head(10))
+        # Return the augmented DataFrame
         return data_augment
     #######################################################################################
     #Creating a design matrix (one hot vector representation)
