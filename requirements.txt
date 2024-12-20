@@ -1,0 +1,14 @@
+ Bottleneck==1.3.7
+matplotlib
+numpy
+pandas
+scikit_learn
+scipy
+seaborn
+scikit-image
+torch
+torchvision
+tqdm
+tqdm
+tqdm
+xlsxwriter

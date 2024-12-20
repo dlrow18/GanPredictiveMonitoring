@@ -33,6 +33,7 @@ import event_prediction as ep
 import event_timestamp_prediction as etp
 device=torch.device('cuda:0')
 plt.style.use('ggplot')
+import sys
 
 
 def run(path, mode, prefix=4, epoch=1):
@@ -96,9 +97,23 @@ def run(path, mode, prefix=4, epoch=1):
             obj.mini_batch_creation(batch=obj.batch)
 
 
-
-
     return obj
+
+
+if __name__ == "__main__":
+    # Check if enough arguments are provided
+    if len(sys.argv) < 3:
+        print("Usage: python main.py <path> <mode> [prefix] [epoch]")
+        sys.exit(1)
+
+    # Parse positional arguments
+    path = sys.argv[1]
+    mode = sys.argv[2]
+    prefix = int(sys.argv[3]) if len(sys.argv) > 3 else 4
+    epoch = int(sys.argv[4]) if len(sys.argv) > 4 else 1
+
+    # Call the run() function with parsed arguments
+    run(path, mode, prefix, epoch)
 
 
 
