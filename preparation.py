@@ -36,33 +36,42 @@ class Input:
     #class methods can be called without creating objects (they have cls instead of self)
     #start from here
     @classmethod
-    def run(cls,path, prefix, batch_size, mode = "event_prediction"):
+    def run(cls, path, prefix, batch_size, mode="event_prediction"):
         '''
         This method is the starting point for preparing an object to be used later in different prediction tasks.
 
-        @param path: The location of the event log
+        @param path: The location of the event log (CSV or Pickle)
         @param prefix: Size of the prefix
         @param batch_size: Size of batch
         @param mode: "event_prediction", "timestamp_prediction", "event_timestamp_prediction"
-        @return:
+        @return: None (sets class attributes)
         '''
-
         cls.prefix_len = prefix
-        cls. batch = batch_size
-        cls.dataset_name = path.split("/")[-1].split('.')[0]
+        cls.batch = batch_size
+        cls.dataset_name = os.path.splitext(os.path.basename(path))[0]  # Extracts dataset name without extension
         cls.mode = mode
-        cls.path = os.getcwd() + "/" + cls.dataset_name + '/'+mode + '/prefix_' + str(cls.prefix_len)
+        cls.path = os.path.join(os.getcwd(), cls.dataset_name, mode, f'prefix_{cls.prefix_len}')
 
-        #Reading a file
-        if(path.split('.')[1] == 'csv'):
-            #Reading a CSV file
-            #data_augment = cls.__read_csv(path)
+        # Check file extension and read the file accordingly
+        file_extension = path.split('.')[-1].lower()
+
+        if file_extension == 'csv':
             data_augment = cls.__read_csv_massive(path)
-        elif(path.split('.')[1] == 'pkl'):
-            data_augment = pickle.load(open(path, "rb"))
-            print("The head of augmented with remaining and duration times:\n", data_augment.head(10))
+        elif file_extension == 'pkl':
+            try:
+                with open(path, "rb") as f:
+                    data_augment = pickle.load(f)
+            except Exception as e:
+                raise ValueError(f"Error reading pickle file: {e}")
+            print("The head of augmented data (with remaining and duration times):\n", data_augment.head(10))
+        else:
+            raise ValueError(f"Unsupported file format: {file_extension}. Supported formats are CSV and Pickle.")
 
-        #Creating a design matrix that shows one hot vector representation for activity IDs
+        # Check if data_augment is a valid DataFrame
+        if data_augment is None or not isinstance(data_augment, pd.DataFrame):
+            raise ValueError("Data augmentation resulted in an invalid DataFrame. Please check the data source.")
+
+        # Creating a design matrix that shows one-hot vector representation for activity IDs
         cls.design_matrix = cls.__design_matrix_creation(data_augment)
 
         #Creating prefix
@@ -84,105 +93,122 @@ class Input:
     @classmethod
     def __read_csv(cls, path):
         '''
-        The input CSV is a file where the events is encoded into numerical activity IDs
+        The input CSV is a file where the events are encoded into numerical activity IDs.
         '''
-        # Reaging files from CSV
+        # Reading CSV file
         dat = pd.read_csv(path)
-        print("Types:", dat.dtypes)
-        # changing the data type from integer to category
+        print("Types before:", dat.dtypes)
+
+        # Changing the data type from integer to category
         dat['ActivityID'] = dat['ActivityID'].astype('category')
-        dat['CompleteTimestamp'] = dat['CompleteTimestamp'].astype('datetime64[ns]')
+        dat['CompleteTimestamp'] = pd.to_datetime(dat['CompleteTimestamp'])
+
         print("Types after:", dat.dtypes)
+        print("Columns:", dat.columns)
 
-        print("columns:", dat.columns)
+        # Grouping the data by 'CaseID'
         dat_group = dat.groupby('CaseID')
-        print("Original data:", dat.head())
-        print("Group by data:", dat_group.head())
-
+        print("Original data (first 5 rows):\n", dat.head())
 
         # Data Preparation
-        # Iterating over groups in Pandas dataframe
-        data_augment = pd.DataFrame()
-        dat_group = dat.groupby('CaseID')
+        data_augment = []  # List to hold data, to avoid inefficient append in loop
+        total_iter = len(dat_group)  # Total number of groups (CaseID)
+        pbar = tqdm(total=total_iter, desc="Processing cases")
 
-        total_iter = len(dat_group.ngroup())
-        pbar = tqdm(total=total_iter)
+        # Iterating over groups in the DataFrame
         for name, gr in dat_group:
-            # sorting by time
-            gr.sort_values(by=['CompleteTimestamp'])
-            # print (gr)
+            # Sorting by time within each group (CaseID)
+            gr = gr.sort_values(by='CompleteTimestamp')  # Sorting in-place
 
-            # computing the duration time in seconds by differecning x[t+1]-x[t]
-            #duration_time = gr.loc[:, 'CompleteTimestamp'].diff() / np.timedelta64(1, 's')
-            duration_time = gr.loc[:, 'CompleteTimestamp'].diff() / np.timedelta64(1, 'D')
-            # Filling Nan with 0
-            duration_time.iloc[0] = 0
-            # print ("duration time:\n", duration_time)
+            # Computing the duration time (difference between timestamps)
+            duration_time = gr['CompleteTimestamp'].diff() / np.timedelta64(1, 'D')  # In days
+            duration_time.iloc[0] = 0  # Fill NaN with 0 for the first row
 
-            # computing the remaining time
-            length = duration_time.shape[0]
-            remaining_time = [np.sum(duration_time[i + 1:length]) for i in range(duration_time.shape[0])]
-            # print("Time to finish:\n", remaining_time)
+            # Computing the remaining time (time to finish)
+            length = len(duration_time)
+            remaining_time = [np.sum(duration_time[i + 1:length]) for i in range(length)]
 
+            # Adding duration and remaining time to the group DataFrame
             gr['duration_time'] = duration_time
             gr['remaining_time'] = remaining_time
 
-            data_augment = data_augment.append(gr)
+            # Append the processed group to the list
+            data_augment.append(gr)
 
-            # print("gr after:\n", gr)
-
-            # break
+            # Update progress bar
             pbar.update(1)
+
         pbar.close()
 
-        #For big inputs, its necessary to pickle it
-        name = path.split(".")[0].split("/")[-1]
-        pickle.dump(data_augment, open(name+".pkl", "wb"))
+        # Concatenate all groups into a single DataFrame
+        data_augment = pd.concat(data_augment, ignore_index=True)
+        print("Dataset with duration and remaining times:\n", data_augment.head(10))
 
-        print("Dataset with indicating remaining and duration times:\n", data_augment.head(10))
+        # Save the augmented data to a pickle file for future use
+        name = path.split(".")[0].split("/")[-1]  # Get the base file name (without extension)
+        pickle_file = f"{name}_augmented.pkl"
+        with open(pickle_file, "wb") as f:
+            pickle.dump(data_augment, f)
+
+        print(f"Data has been saved to {pickle_file}")
+
         return data_augment
     ################################################################################
     # Reading the CSV file
     @classmethod
     def __read_csv_massive(cls, path):
         '''
-        The input CSV is a file where the events is encoded into numerical activity IDs
-        see link https://stackoverflow.com/questions/40357434/pandas-df-iterrows-parallelization
+        The input CSV is a file where the events are encoded into numerical activity IDs
         '''
-        # Reaging files from CSV
-        dat = pd.read_csv(path)
-        print("Types:", dat.dtypes)
-        # changing the data type from integer to category
+        # Reading the CSV file
+        try:
+            dat = pd.read_csv(path)
+        except Exception as e:
+            raise ValueError(f"Error reading the CSV file: {e}")
+
+        print("Types before:", dat.dtypes)
+
+        # Ensure columns exist before proceeding
+        if 'ActivityID' not in dat.columns or 'CompleteTimestamp' not in dat.columns:
+            raise ValueError("CSV file must contain 'ActivityID' and 'CompleteTimestamp' columns.")
+
+        # Changing the data type from integer to category for ActivityID and datetime for CompleteTimestamp
         dat['ActivityID'] = dat['ActivityID'].astype('category')
-        dat['CompleteTimestamp'] = dat['CompleteTimestamp'].astype('datetime64[ns]')
+        dat['CompleteTimestamp'] = pd.to_datetime(dat['CompleteTimestamp'])
+
         print("Types after:", dat.dtypes)
+        print("Columns:", dat.columns)
 
-        print("columns:", dat.columns)
+        # Group by 'CaseID'
         dat_group = dat.groupby('CaseID')
-        print("Original data:", dat.head())
-        print("Group by data:", dat_group.head())
+        print("Original data (first 5 rows):\n", dat.head())
+        print("Group by data (first 5 groups):\n", list(dat_group)[:5])
 
-        # create as many processes as there are CPUs on your machine
+        # Create as many processes as there are CPUs on your machine
         num_processes = multiprocessing.cpu_count()
-        # calculate the chunk size as an integer
+
+        # Calculate the chunk size based on the number of rows and processes
         chunk_size = int(dat.shape[0] / num_processes)
 
-        # will work even if the length of the dataframe is not evenly divisible by num_processes
-        #chunks = [dat.ix[dat.index[i:i + chunk_size]] for i in range(0, dat.shape[0], chunk_size)]
+        # Handle case where the data isn't perfectly divisible by num_processes
         chunks = [dat.iloc[dat.index[i:i + chunk_size]] for i in range(0, dat.shape[0], chunk_size)]
 
+        # Create a multiprocessing pool with `num_processes` processes
+        with multiprocessing.Pool(processes=num_processes) as pool:
+            # Apply the function to each chunk in the list
+            results = pool.map(cls.func, chunks)
 
+        # Concatenate the list of DataFrames into a single DataFrame
+        results = pd.concat(results, ignore_index=True)
 
+        # Save the results to a pickle file
+        name = path.split(".")[0].split("/")[-1]  # Get the base name of the file (without extension)
+        pickle_file = f"{name}_augmented.pkl"
+        with open(pickle_file, "wb") as f:
+            pickle.dump(results, f)
 
-        # create our pool with `num_processes` processes
-        pool = multiprocessing.Pool(processes=num_processes)
-        # apply our function to each chunk in the list
-        results = pool.map(cls.func, chunks)        #Results is a list of dataframe [df1, df2,...df10]
-        results = pd.concat(results)
-        #return results
-
-        name = path.split(".")[0].split("/")[-1]
-        pickle.dump(results, open(name + ".pkl", "wb"))
+        print(f"Data has been saved to {pickle_file}")
+        return results
 
     ######################################################################################
     @classmethod
