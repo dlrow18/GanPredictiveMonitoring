@@ -230,6 +230,13 @@ class Input:
         '''
         data_augment is pandas dataframe created after reading CSV input by "read_csv()" method
         '''
+
+        # check if data augment correctly passed
+        print(type(data_augment))  # Should print <class 'pandas.core.frame.DataFrame'>
+        print(data_augment.head())  # Preview the DataFrame to confirm its content
+        if 'ActivityID' not in data_augment.columns:
+            raise ValueError("The DataFrame does not contain the 'ActivityID' column.")
+
         # Creating a desing matrix (one hot vectors for activities), End of line (case) is denoted by class 0
         unique_event = sorted(data_augment['ActivityID'].unique())
         cls.unique_event = [0] + unique_event
