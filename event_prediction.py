@@ -336,7 +336,7 @@ def model_eval_test(modelG, mode, obj):
     print("total number of predictions:", len(accuracy_record), np.sum(accuracy_record))
     print("The accuracy of the model with the most probable event:", np.mean(accuracy_record))
     print("The accuracy of the model with the 2 most probable events:", np.mean(accuracy_record_2most_probable))
-    return np.mean(accuracy_record), f1score
+    return np.mean(accuracy_record), weighted_f1score
 ####################################################################################################
 
 
@@ -459,7 +459,7 @@ def train(rnnG, rnnD, optimizerD, optimizerG, obj, epoch):
             print(f"The validation set F1-Score is: {f1_score}")
 
             # Save model only if accuracy improves
-            if f1_score > accuracy_best:  # Should hange 'accuracy_best' to 'f1_score_best'
+            if f1_score > accuracy_best:  # Should change 'accuracy_best' to 'f1_score_best'
                 accuracy_best = f1_score
                 print("Saving the model with the best validation accuracy...")
 
