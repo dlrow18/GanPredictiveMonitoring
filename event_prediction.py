@@ -387,8 +387,10 @@ def train(rnnG, rnnD, optimizerD, optimizerG, obj, epoch):
             print(f"The validation set F1-Score is: {f1_score}")
 
             # Save model only if accuracy improves
-            if f1_score > f1_score_best:  
-                f1_score_best = f1_score
+            # if f1_score > f1_score_best:
+            #    f1_score_best = f1_score
+            if accuracy > accuracy_best:
+                accuracy_best = accuracy
                 print("Saving the model with the best validation accuracy...")
 
                 # Writing down the model
