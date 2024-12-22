@@ -266,17 +266,117 @@ def model_eval_test(modelG, mode, obj):
 
 ####################################################################################################
 
+# Gradient Penalty Function
+def gradient_penalty(critic, real_data, fake_data, device):
+    batch_size = real_data.size(0)
+    alpha = torch.rand(batch_size, 1, 1, 1, device=device)  # Interpolation factor
+    alpha = alpha.expand_as(real_data)
+    interpolates = (alpha * real_data + (1 - alpha) * fake_data).requires_grad_(True)
 
+    critic_interpolates = critic(interpolates)
+    gradients = autograd.grad(
+        outputs=critic_interpolates,
+        inputs=interpolates,
+        grad_outputs=torch.ones_like(critic_interpolates).to(device),
+        create_graph=True,
+        retain_graph=True,
+    )[0]
+    gradients = gradients.view(batch_size, -1)
+    gradient_norm = gradients.norm(2, dim=1)
+    penalty = ((gradient_norm - 1) ** 2).mean()
+    return penalty
+
+
+# Loss Functions
+def critic_loss(critic, real_data, fake_data, device, lambda_gp=10):
+    real_score = critic(real_data).mean()
+    fake_score = critic(fake_data).mean()
+    gp = gradient_penalty(critic, real_data, fake_data, device)
+    return fake_score - real_score + lambda_gp * gp
+
+
+def generator_loss(critic, fake_data):
+    return -critic(fake_data).mean()
+
+
+# Training Loop
 def train(rnnG, rnnD, optimizerD, optimizerG, obj, epoch):
-    '''
-    @param rnnG: Generator neural network
-    @param rnnD: Discriminator neural network
-    @param optimizerD:  Optimizer of the discriminator
-    @param optimizerG:  Optimizer of the generator
-    @param obj:       A data object created from "Input" class that contains the training,test, and validation datasets and other required information
-    @param epoch:    The number of epochs
-    @return: Generator and Discriminator
-    '''
+    """
+    Train the GAN using the WGAN-GP approach.
+
+    Args:
+        rnnG: Generator network.
+        rnnD: Discriminator (critic) network.
+        optimizerD: Optimizer for the discriminator (critic).
+        optimizerG: Optimizer for the generator.
+        obj: Object containing data-related attributes (e.g., path, batch size).
+        epoch: Number of training epochs.
+    """
+    device = next(rnnG.parameters()).device  # Ensure proper device allocation
+    train_loader = obj.train_loader
+    accuracy_best = -float('inf')  # Track the best F1 score or accuracy
+    path = obj.path
+    critic_steps = 5  # Number of critic updates per generator update
+    lambda_gp = 10    # Gradient penalty weight
+
+    for epoch_idx in range(epoch):
+        for i, real_data in enumerate(train_loader):
+            real_data = real_data[0].to(device)  # Assuming the first element is the input data
+            batch_size = real_data.size(0)
+
+            # Generate fake data
+            noise = torch.randn(batch_size, obj.prefix_len, len(obj.unique_event), device=device)
+            fake_data = rnnG(noise)
+
+            # --------------------
+            # Update Critic
+            # --------------------
+            for _ in range(critic_steps):
+                optimizerD.zero_grad()
+                d_loss = critic_loss(rnnD, real_data, fake_data, device, lambda_gp)
+                d_loss.backward()
+                optimizerD.step()
+
+            # --------------------
+            # Update Generator
+            # --------------------
+            if i % critic_steps == 0:
+                optimizerG.zero_grad()
+                g_loss = generator_loss(rnnD, fake_data)
+                g_loss.backward()
+                optimizerG.step()
+
+        # --------------------
+        # Validation
+        # --------------------
+        if epoch_idx % 5 == 0:
+            rnnG.eval()
+            accuracy, f1_score = model_eval_test(rnnG, 'validation', obj)
+            rnnG.train()
+
+            if f1_score > accuracy_best:  # Save best model based on F1 score
+                print(f"Epoch {epoch_idx}: Validation Accuracy: {accuracy}, F1 Score: {f1_score}")
+                accuracy_best = f1_score
+
+                # Save models
+                if not os.path.isdir(path):
+                    pathlib.Path(path).mkdir(parents=True, exist_ok=True)
+                torch.save(rnnG.state_dict(), f"{path}/rnnG_best.pth")
+                torch.save(rnnD.state_dict(), f"{path}/rnnD_best.pth")
+
+        print(f"Epoch {epoch_idx + 1}/{epoch} - Critic Loss: {d_loss.item():.4f}, Generator Loss: {g_loss.item():.4f}")
+
+'''
+def train(rnnG, rnnD, optimizerD, optimizerG, obj, epoch):
+    
+    # @param rnnG: Generator neural network
+    # @param rnnD: Discriminator neural network
+    # @param optimizerD:  Optimizer of the discriminator
+    # @param optimizerG:  Optimizer of the generator
+    # @param obj:       A data object created from "Input" class that contains the training,test, and validation datasets and other required information
+    # @param epoch:    The number of epochs
+    # @return: Generator and Discriminator
+    
 
     # Training Generator
     #epoch = 30
@@ -409,6 +509,8 @@ def train(rnnG, rnnD, optimizerD, optimizerG, obj, epoch):
     #plot_loss(gen_loss_pred, "Prediction loss", obj)
     plot_loss(gen_loss_tot, "Generator loss total", obj)
     plot_loss(disc_loss_tot, "Discriminator loss total", obj)
+    
+'''
 
 #########################################################################################################
 
