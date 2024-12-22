@@ -369,15 +369,15 @@ def train(rnnG, rnnD, optimizerD, optimizerG, obj, epoch):
 
 '''
 def train(rnnG, rnnD, optimizerD, optimizerG, obj, epoch):
-    
-    # @param rnnG: Generator neural network
-    # @param rnnD: Discriminator neural network
-    # @param optimizerD:  Optimizer of the discriminator
-    # @param optimizerG:  Optimizer of the generator
-    # @param obj:       A data object created from "Input" class that contains the training,test, and validation datasets and other required information
-    # @param epoch:    The number of epochs
-    # @return: Generator and Discriminator
-    
+    '''
+    @param rnnG: Generator neural network
+    @param rnnD: Discriminator neural network
+    @param optimizerD:  Optimizer of the discriminator
+    @param optimizerG:  Optimizer of the generator
+    @param obj:       A data object created from "Input" class that contains the training,test, and validation datasets and other required information
+    @param epoch:    The number of epochs
+    @return: Generator and Discriminator
+    '''
 
     # Training Generator
     #epoch = 30
