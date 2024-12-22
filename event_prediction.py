@@ -202,141 +202,68 @@ def model_eval_test(modelG, mode, obj):
     @param modelG: Generator neural network
     @param mode: 'validation', 'test', 'test-validation'
     @param obj: A data object created from "Input" class that contains the required information
-    @return: The accuracy of the Generator
+    @return: The accuracy and F1 score of the Generator
     '''
-    # set the evaluation mode (this mode is necessary if you train with batch, since in test the size of batch is different)
+    # set the evaluation mode
     rnnG = modelG
     rnnG.eval()
-
-
 
     validation_loader = obj.validation_loader
     test_loader = obj.test_loader
     batch = obj.batch
-    #events = list(np.arange(0, len(obj.unique_event) + 1))
-    events = list(np.arange(0, len(obj.unique_event) ))
+    events = list(np.arange(0, len(obj.unique_event)))
     prefix_len = obj.prefix_len
 
-
-    if (mode == 'validation'):
+    if mode == 'validation':
         data_loader = validation_loader
-    elif (mode == "test"):
+    elif mode == "test":
         data_loader = test_loader
-    elif (mode == 'test-validation'):
+    elif mode == 'test-validation':
         data_loader = test_loader + validation_loader
 
-
-    predicted = []
     accuracy_record = []
-    mistakes = {}
-
-    accuracy_record_2most_probable = []
     y_truth_list = []
     y_pred_last_event_list = []
 
     for mini_batch in iter(data_loader):
-
-        x = mini_batch[0];
+        x = mini_batch[0]
         y_truth = mini_batch[1]
-        # When we create mini batches, the length of the last one probably is less than the batch size, and it makes problem for the LSTM, therefore we skip it.
-        if (x.size()[0] < batch):
+        if x.size()[0] < batch:
             continue
-        # print("x.size()", x.size())
 
         # Executing LSTM
         y_pred = rnnG(x[:, :, events])
-        # print("y_pred:\n", y_pred, y_pred.size())
-
-        # Just taking the last predicted element from each the batch
         y_pred_last = y_pred[0: batch, prefix_len - 1, :]
-        y_pred_last = y_pred_last.view((batch, 1, -1))
-        y_pred_last_event = torch.argmax(F.softmax(y_pred_last, dim=2), dim=2)
+        y_pred_last_event = torch.argmax(F.softmax(y_pred_last.view((batch, 1, -1)), dim=2), dim=2)
 
         y_truth_list += list(y_truth.flatten().data.cpu().numpy().astype(int))
         y_pred_last_event_list += list(y_pred_last_event.flatten().data.cpu().numpy().astype(int))
 
-        y_pred_second_last = y_pred[0: batch, prefix_len - 2, :]
-        y_pred_second_last = y_pred_second_last.view((batch, 1, -1))
-        y_pred_second_last_event = torch.argmax(F.softmax(y_pred_second_last, dim=2), dim=2)
-
-        # We iterate over the minibatch
         for i in range(x.size()[0]):
-
-            if (y_pred_last_event[i] == y_truth[i].long()):
-                # print("inside if:", y_pred, y_truth[i])
-                correct_prediction = 1
-            else:
-                # print("inside else:", y_pred, y_truth[i])
-                correct_prediction = 0
-
-                # Collecting the mistakes
-                k = str(y_truth[i].detach()) + ":" + str(y_pred_last_event[i].detach()) + str(
-                    y_pred_second_last_event[i].detach())
-                if (k not in mistakes):
-                    mistakes[k] = 1
-                else:
-                    mistakes[k] += 1
-
-            # Considering the second most probable
-            if ((y_pred_second_last_event[i] == y_truth[i].long()) or (y_pred_last_event[i] == y_truth[i].long())):
-                correct_prediction_2most_probable = 1
-            else:
-                correct_prediction_2most_probable = 0
-
-            # accuracy_record.append(correct_prediction/float(len(y_pred)))
+            correct_prediction = int(y_pred_last_event[i] == y_truth[i].long())
             accuracy_record.append(correct_prediction)
-            accuracy_record_2most_probable.append(correct_prediction_2most_probable)
-            predicted.append(y_pred)
 
     rnnG.train()
-    # computing F1scores wiethed
-    weighted_precision, weighted_recall, weighted_f1score, support = precision_recall_fscore_support(y_truth_list,
-                                                                                            y_pred_last_event_list,
-                                                                                            average='weighted',
-                                                                                            labels=events)
-    # computing F1score per each label
-    precision, recall, f1score, support = precision_recall_fscore_support(y_truth_list, y_pred_last_event_list, average=None, labels=events)
 
-    if (mode == 'test'):
-        #pprint.pprint(mistakes)
-        if(os.path.isfile(obj.path+'/results.txt')):
-            with open(obj.path+'/results.txt', "a") as fout:
-                pprint.pprint(mistakes, stream=fout)
-        else:
-            with open(obj.path+'/results.txt', "w") as fout:
-                pprint.pprint(mistakes, stream=fout)
+    # Compute weighted F1 score
+    weighted_precision, weighted_recall, weighted_f1score, _ = precision_recall_fscore_support(
+        y_truth_list, y_pred_last_event_list, average='weighted', labels=events
+    )
 
+    # Write results to a file (if mode is 'test')
+    if mode == 'test':
         with open(obj.path + '/results.txt', "a") as fout:
-            fout.write("Turth: first prediction, second prediction\n" +
-                       "total number of predictions:"+ str(len(accuracy_record))+','+str(np.sum(accuracy_record)) +
-                       "\n The accuracy of the model with the most probable event:" + str(np.mean(accuracy_record))+
-                       "\n The accuracy of the model with the 2 most probable events:" +str(np.mean(accuracy_record_2most_probable))+
-                       '\n The list of activity names:' + str(events) +
-                       '\n The precision per activity names:' + str(precision) +
-                       '\n The recall per activity names:' + str(recall) +
-                       '\n The F1 score per activity names:' + str(f1score) +
-                       '\n The support per activity names:' + str(support) +
-                       '\n The weighted precision, recall, and F1-score are: ' + str(weighted_precision) + ',' + str(weighted_recall) + ',' + str(weighted_f1score) + '\n')
+            fout.write(
+                f"Accuracy: {np.mean(accuracy_record):.4f}\n"
+                f"F1 Score: {weighted_f1score:.4f}\n"
+            )
 
-        #fout.close()
+    # Print results
+    print(f"Accuracy: {np.mean(accuracy_record):.4f}")
+    print(f"F1 Score: {weighted_f1score:.4f}")
 
-
-
-    print("Labels:", events)
-    print("Wighted Precision:", weighted_precision)
-    print("Wighted Recall:", weighted_recall)
-    print("Wighted F1score:", weighted_f1score)
-    print("---------------------")
-    print("Labels:", events)
-    print("Precision:", precision)
-    print("Recall:", recall)
-    print("F1score:", f1score)
-    print("Support:", support)
-    print("Turth: first prediction, second prediction\n")
-    print("total number of predictions:", len(accuracy_record), np.sum(accuracy_record))
-    print("The accuracy of the model with the most probable event:", np.mean(accuracy_record))
-    print("The accuracy of the model with the 2 most probable events:", np.mean(accuracy_record_2most_probable))
     return np.mean(accuracy_record), weighted_f1score
+
 ####################################################################################################
 
 
