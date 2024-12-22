@@ -286,6 +286,7 @@ def train(rnnG, rnnD, optimizerD, optimizerG, obj, epoch):
     disc_loss_tot = []
     gen_loss_tot = []
     accuracy_best = 0
+    f1_score_best = 0
 
     for i in tqdm(range(epoch)):
         for mini_batch in iter(obj.train_loader):
@@ -386,8 +387,8 @@ def train(rnnG, rnnD, optimizerD, optimizerG, obj, epoch):
             print(f"The validation set F1-Score is: {f1_score}")
 
             # Save model only if accuracy improves
-            if f1_score > accuracy_best:  # Should change 'accuracy_best' to 'f1_score_best'
-                accuracy_best = f1_score
+            if f1_score > f1_score_best:  
+                f1_score_best = f1_score
                 print("Saving the model with the best validation accuracy...")
 
                 # Writing down the model
