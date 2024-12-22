@@ -300,6 +300,7 @@ def generator_loss(critic, fake_data):
 
 
 # Training Loop
+'''
 def train(rnnG, rnnD, optimizerD, optimizerG, obj, epoch):
     """
     Train the GAN using the WGAN-GP approach.
@@ -509,8 +510,7 @@ def train(rnnG, rnnD, optimizerD, optimizerG, obj, epoch):
     #plot_loss(gen_loss_pred, "Prediction loss", obj)
     plot_loss(gen_loss_tot, "Generator loss total", obj)
     plot_loss(disc_loss_tot, "Discriminator loss total", obj)
-    
-'''
+
 
 #########################################################################################################
 
