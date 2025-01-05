@@ -202,7 +202,7 @@ def model_eval_test(modelG, mode, obj):
     @param modelG: Generator neural network
     @param mode: 'validation', 'test', 'test-validation'
     @param obj: A data object created from "Input" class that contains the required information
-    @return: The average accuracy and F1 score of the Generator over all test batches
+    @return: The average accuracy and F1 score of the Generator over all mini-batches
     '''
     # Set the evaluation mode
     rnnG = modelG
@@ -223,8 +223,7 @@ def model_eval_test(modelG, mode, obj):
         data_loader = test_loader + validation_loader
 
     # Initialize variables to store metrics
-    total_correct = 0
-    total_predictions = 0
+    accuracy_record = []
     y_truth_list = []
     y_pred_last_event_list = []
 
@@ -243,14 +242,15 @@ def model_eval_test(modelG, mode, obj):
         y_truth_list += list(y_truth.flatten().data.cpu().numpy().astype(int))
         y_pred_last_event_list += list(y_pred_last_event.flatten().data.cpu().numpy().astype(int))
 
-        # Count correct predictions
-        total_correct += (y_pred_last_event.flatten() == y_truth.long().flatten()).sum().item()
-        total_predictions += y_truth.numel()
+        # Calculate accuracy for this mini-batch
+        correct_predictions = (y_pred_last_event.flatten() == y_truth.long().flatten()).sum().item()
+        batch_accuracy = correct_predictions / y_truth.numel()
+        accuracy_record.append(batch_accuracy)
 
     rnnG.train()
 
-    # Compute metrics
-    accuracy = total_correct / total_predictions
+    # Calculate final metrics
+    avg_accuracy = np.mean(accuracy_record)  # Average of batch-level accuracies
     weighted_precision, weighted_recall, weighted_f1score, _ = precision_recall_fscore_support(
         y_truth_list, y_pred_last_event_list, average='weighted', labels=events
     )
@@ -259,15 +259,15 @@ def model_eval_test(modelG, mode, obj):
     if mode == 'test':
         with open(obj.path + '/results.txt', "a") as fout:
             fout.write(
-                f"Accuracy: {accuracy:.4f}\n"
-                f"F1 Score: {weighted_f1score:.4f}\n"
+                f"Average Accuracy: {avg_accuracy:.4f}\n"
+                f"Average F1 Score: {weighted_f1score:.4f}\n"
             )
 
-    # Print results
-    print(f"Average Accuracy: {accuracy:.4f}")
+    # Print average results
+    print(f"Average Accuracy: {avg_accuracy:.4f}")
     print(f"Average F1 Score: {weighted_f1score:.4f}")
 
-    return accuracy, weighted_f1score
+    return avg_accuracy, weighted_f1score
 
 ####################################################################################################
 
