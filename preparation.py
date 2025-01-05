@@ -91,12 +91,12 @@ class Input:
     #################################################################################
     #Reading the CSV file
     @classmethod
-    def __read_csv(cls, path):
+    def __read_csv(cls, path, limit_rows=20000):
         '''
         The input CSV is a file where the events are encoded into numerical activity IDs.
         '''
-        # Reading CSV file
-        dat = pd.read_csv(path)
+        # Reading CSV file with row limit
+        dat = pd.read_csv(path, nrows=limit_rows)
         print("Types before:", dat.dtypes)
 
         # Changing the data type from integer to category
