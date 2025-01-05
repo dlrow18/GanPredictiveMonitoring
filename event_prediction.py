@@ -202,9 +202,9 @@ def model_eval_test(modelG, mode, obj):
     @param modelG: Generator neural network
     @param mode: 'validation', 'test', 'test-validation'
     @param obj: A data object created from "Input" class that contains the required information
-    @return: The accuracy and F1 score of the Generator
+    @return: The average accuracy and F1 score of the Generator over all test batches
     '''
-    # set the evaluation mode
+    # Set the evaluation mode
     rnnG = modelG
     rnnG.eval()
 
@@ -214,6 +214,7 @@ def model_eval_test(modelG, mode, obj):
     events = list(np.arange(0, len(obj.unique_event)))
     prefix_len = obj.prefix_len
 
+    # Determine which data loader to use
     if mode == 'validation':
         data_loader = validation_loader
     elif mode == "test":
@@ -221,7 +222,9 @@ def model_eval_test(modelG, mode, obj):
     elif mode == 'test-validation':
         data_loader = test_loader + validation_loader
 
-    accuracy_record = []
+    # Initialize variables to store metrics
+    total_correct = 0
+    total_predictions = 0
     y_truth_list = []
     y_pred_last_event_list = []
 
@@ -231,21 +234,23 @@ def model_eval_test(modelG, mode, obj):
         if x.size()[0] < batch:
             continue
 
-        # Executing LSTM
+        # Execute LSTM
         y_pred = rnnG(x[:, :, events])
         y_pred_last = y_pred[0: batch, prefix_len - 1, :]
         y_pred_last_event = torch.argmax(F.softmax(y_pred_last.view((batch, 1, -1)), dim=2), dim=2)
 
+        # Collect ground truth and predictions
         y_truth_list += list(y_truth.flatten().data.cpu().numpy().astype(int))
         y_pred_last_event_list += list(y_pred_last_event.flatten().data.cpu().numpy().astype(int))
 
-        for i in range(x.size()[0]):
-            correct_prediction = int(y_pred_last_event[i] == y_truth[i].long())
-            accuracy_record.append(correct_prediction)
+        # Count correct predictions
+        total_correct += (y_pred_last_event.flatten() == y_truth.long().flatten()).sum().item()
+        total_predictions += y_truth.numel()
 
     rnnG.train()
 
-    # Compute weighted F1 score
+    # Compute metrics
+    accuracy = total_correct / total_predictions
     weighted_precision, weighted_recall, weighted_f1score, _ = precision_recall_fscore_support(
         y_truth_list, y_pred_last_event_list, average='weighted', labels=events
     )
@@ -254,15 +259,15 @@ def model_eval_test(modelG, mode, obj):
     if mode == 'test':
         with open(obj.path + '/results.txt', "a") as fout:
             fout.write(
-                f"Accuracy: {np.mean(accuracy_record):.4f}\n"
+                f"Accuracy: {accuracy:.4f}\n"
                 f"F1 Score: {weighted_f1score:.4f}\n"
             )
 
     # Print results
-    print(f"Accuracy: {np.mean(accuracy_record):.4f}")
-    print(f"F1 Score: {weighted_f1score:.4f}")
+    print(f"Average Accuracy: {accuracy:.4f}")
+    print(f"Average F1 Score: {weighted_f1score:.4f}")
 
-    return np.mean(accuracy_record), weighted_f1score
+    return accuracy, weighted_f1score
 
 ####################################################################################################
 
